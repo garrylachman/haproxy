@@ -19,6 +19,8 @@
 #include <syslog.h>
 #include <time.h>
 
+#include <stdbool.h>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -1321,7 +1323,7 @@ void capture_headers(char *som, struct hdr_idx *idx,
 		sov = col + 1;
 		while (sov < eol && HTTP_IS_LWS(*sov))
 			sov++;
-				
+
 		for (h = cap_hdr; h; h = h->next) {
 			if (h->namelen && (h->namelen == col - sol) &&
 			    (strncasecmp(sol, h->name, h->namelen) == 0)) {
@@ -1333,11 +1335,11 @@ void capture_headers(char *som, struct hdr_idx *idx,
 					Alert("HTTP capture : out of memory.\n");
 					continue;
 				}
-							
+
 				len = eol - sov;
 				if (len > h->len)
 					len = h->len;
-							
+
 				memcpy(cap[h->index], sov, len);
 				cap[h->index][len]=0;
 			}
@@ -1674,16 +1676,17 @@ get_http_auth(struct stream *s)
 
 	ctx.idx = 0;
 
-	if (txn->flags & TX_USE_PX_CONN) {
-		h = "Proxy-Authorization";
-		len = strlen(h);
-	} else {
-		h = "Authorization";
-		len = strlen(h);
-	}
-
-	if (!http_find_header2(h, len, s->req.buf->p, &txn->hdr_idx, &ctx))
-		return 0;
+  // Garry Lachman: check both Proxy-Authorization && Authorization headers
+  h = "Proxy-Authorization";
+  len = strlen(h);
+  bool auth_header_found = http_find_header2(h, len, s->req.buf->p, &txn->hdr_idx, &ctx);
+  if (!auth_header_found) {
+    h = "Authorization";
+    len = strlen(h);
+    auth_header_found = http_find_header2(h, len, s->req.buf->p, &txn->hdr_idx, &ctx);
+  }
+  if (!auth_header_found)
+    return 0;
 
 	h = ctx.line + ctx.val;
 
@@ -1899,7 +1902,7 @@ void http_msg_analyzer(struct http_msg *msg, struct hdr_idx *idx)
 		if (likely(!HTTP_IS_CRLF(*ptr))) {
 			goto http_msg_hdr_name;
 		}
-		
+
 		if (likely(*ptr == '\r'))
 			EAT_AND_JUMP_OR_RETURN(http_msg_last_lf, HTTP_MSG_LAST_LF);
 		goto http_msg_last_lf;
@@ -1934,7 +1937,7 @@ void http_msg_analyzer(struct http_msg *msg, struct hdr_idx *idx)
 		if (likely(!HTTP_IS_CRLF(*ptr))) {
 			goto http_msg_hdr_val;
 		}
-			
+
 		if (likely(*ptr == '\r'))
 			EAT_AND_JUMP_OR_RETURN(http_msg_hdr_l1_lf, HTTP_MSG_HDR_L1_LF);
 		goto http_msg_hdr_l1_lf;
@@ -1955,7 +1958,7 @@ void http_msg_analyzer(struct http_msg *msg, struct hdr_idx *idx)
 		/* we had a header consisting only in spaces ! */
 		msg->eol = msg->sov;
 		goto http_msg_complete_header;
-		
+
 	case HTTP_MSG_HDR_VAL:
 	http_msg_hdr_val:
 		/* assumes msg->sol points to the first char, and msg->sov
@@ -2025,7 +2028,7 @@ void http_msg_analyzer(struct http_msg *msg, struct hdr_idx *idx)
 		if (likely(!HTTP_IS_CRLF(*ptr))) {
 			goto http_msg_hdr_name;
 		}
-		
+
 		if (likely(*ptr == '\r'))
 			EAT_AND_JUMP_OR_RETURN(http_msg_last_lf, HTTP_MSG_LAST_LF);
 		goto http_msg_last_lf;
@@ -8373,7 +8376,7 @@ void manage_server_side_cookies(struct stream *s, struct channel *res)
 				/* assume passive cookie by default */
 				txn->flags &= ~TX_SCK_MASK;
 				txn->flags |= TX_SCK_FOUND;
-			
+
 				/* If the cookie is in insert mode on a known server, we'll delete
 				 * this occurrence because we'll insert another one later.
 				 * We'll delete it too if the "indirect" option is set and we're in
